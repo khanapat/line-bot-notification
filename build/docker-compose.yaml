@@ -1,0 +1,7 @@
+version: '2'
+services:
+  app:
+    image: ${CONTAINER_IMAGE}:${VERSION}
+    container_name: ${CONTAINER_IMAGE}
+    ports:
+      - "${PORT}:${PORT}"
