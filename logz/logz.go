@@ -2,7 +2,6 @@ package logz
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/spf13/viper"
@@ -10,7 +9,7 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-func NewLogConfig() *zap.Logger {
+func NewLogConfig() (*zap.Logger, error) {
 	encoderConfig := zap.NewProductionEncoderConfig()
 	encoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 	encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
@@ -38,12 +37,13 @@ func NewLogConfig() *zap.Logger {
 		config.Encoding = "json"
 	}
 	config.EncoderConfig = encoderConfig
+	config.OutputPaths = []string{"stdout"}
 
 	logger, err := config.Build()
 	if err != nil {
-		log.Fatal("fatal error config logger")
+		return nil, err
 	}
-	return logger
+	return logger, nil
 }
 
 func ExecutionTime(start time.Time, name string, l *zap.Logger) {

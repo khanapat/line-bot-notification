@@ -16,6 +16,12 @@ func (c *Ctx) Log() *zap.Logger {
 	return c.logger
 }
 
+func (c *Ctx) Status(status int) *Ctx {
+	c.Response().Header.Add(common.XRequestID, string(c.Request().Header.Peek(common.XRequestID)))
+	ctx := c.Ctx.Status(status)
+	return &Ctx{ctx, c.logger}
+}
+
 type Handler func(*Ctx) error
 
 func Helper(handler Handler, logger *zap.Logger) fiber.Handler {

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"line-notification/bot"
+	"line-notification/client"
 	"line-notification/handler"
 	"line-notification/logz"
 	"line-notification/middleware"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	_ "time/tzdata"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/spf13/viper"
@@ -20,8 +22,8 @@ import (
 
 func init() {
 	runtime.GOMAXPROCS(1)
-	initViper()
 	initTimezone()
+	initViper()
 }
 
 func main() {
@@ -34,28 +36,47 @@ func main() {
 		IdleTimeout:   viper.GetDuration("app.timeout"),
 	})
 
-	logger := logz.NewLogConfig()
+	logger, err := logz.NewLogConfig()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	httpClient := client.NewClient()
 
 	middle := middleware.NewMiddleware(logger)
 
 	line := app.Group(viper.GetString("app.context"))
 
-	// api.Use(recover.New())
-	// api.Use(requestid.New())
-	// api.Use(logger.New())
 	line.Use(middle.JSONMiddleware())
+	line.Use(middle.LoggingMiddleware())
 
-	line.Post("/webhook", handler.Helper(bot.NewBotHandler().ReplyBot, logger))
+	line.Post("/webhook", handler.Helper(bot.NewBotHandler(
+		bot.NewGetProfileFn(httpClient),
+		bot.NewReplyMessageClientFn(httpClient),
+		bot.NewPushMessageClientFn(httpClient),
+	).ReplyBot, logger))
+
+	line.Get("/push", handler.Helper(bot.NewBotHandler(
+		bot.NewGetProfileFn(httpClient),
+		bot.NewReplyMessageClientFn(httpClient),
+		bot.NewPushMessageClientFn(httpClient),
+	).Voting, logger))
+
+	line.Post("/test", handler.Helper(bot.NewBotHandler(
+		bot.NewGetProfileFn(httpClient),
+		bot.NewReplyMessageClientFn(httpClient),
+		bot.NewPushMessageClientFn(httpClient),
+	).Test, logger))
 
 	line.Get("/health", func(c *fiber.Ctx) error {
 		return c.SendString("Hello, World 👋!")
 	})
 
-	log.Println(fmt.Sprintf("⇨ http server started on [::]:%s", viper.GetString("app.port")))
+	logger.Info(fmt.Sprintf("⇨ http server started on [::]:%s", viper.GetString("app.port")))
 
 	go func() {
 		if err := app.Listen(fmt.Sprintf(":%s", viper.GetString("app.port"))); err != nil {
-			log.Panic(err)
+			logger.Info(err.Error())
 		}
 	}()
 
@@ -64,12 +85,12 @@ func main() {
 
 	select {
 	case <-c:
-		log.Println("terminating: by signal")
+		logger.Info("terminating: by signal")
 	}
 
 	app.Shutdown()
 
-	log.Println("shutting down")
+	logger.Info("shutting down")
 	os.Exit(0)
 }
 
@@ -81,6 +102,13 @@ func initViper() {
 
 	viper.SetDefault("log.level", "debug")
 	viper.SetDefault("log.env", "dev")
+
+	viper.SetDefault("client.timeout", "60s")
+	viper.SetDefault("client.hidebody", true)
+	viper.SetDefault("client.line-notification.channel-token", "cdsyUJnmmWbfU8zHbWb4pZVjIw8jrMIXOceX0zBP8e/keH6KAnt4TyG6ZCXGstYP03m68Q1BZOU/7/DvmTyKSDR4EnxLxyAuVq94zQjT6HrjI0bMf9XW5spws2hwmD2ebD+OGHKrVVR3u9i2VlrXCAdB04t89/1O/w1cDnyilFU=")
+	viper.SetDefault("client.line-notification.get-profile.url", "https://api.line.me/v2/bot/profile/{userID}")
+	viper.SetDefault("client.line-notification.reply-message.url", "https://api.line.me/v2/bot/message/reply")
+	viper.SetDefault("client.line-notification.push-message.url", "https://api.line.me/v2/bot/message/push")
 
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
